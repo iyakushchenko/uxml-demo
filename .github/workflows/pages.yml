@@ -1,0 +1,48 @@
+## Copied into the deployed bundle as .github/workflows/pages.yml by
+## .github/workflows/deploy-pages.yml — it runs in the PUBLIC demo repo, not
+## here. The demo publishes via Actions rather than the legacy branch builder,
+## which has a 10-minute build cap: on 2026-08-11 it timed out twice on this
+## ~55MB / 210-file bundle and then wedged for hours, serving a stale bundle
+## the whole time. upload-pages-artifact has no such cap and no Jekyll pass.
+## A deploy-key push (unlike a GITHUB_TOKEN one) does trigger workflows, which
+## is what makes this fire.
+##
+## Kept as a real file rather than a here-string inside the deploy step: a
+## PowerShell here-string needs its closing delimiter at column 0, which is
+## invalid inside a YAML block scalar.
+##
+## Flaky failure mode (2026-08-12): deploy-pages can read "Found 0 artifact(s)"
+## under a second after upload-pages-artifact finalises — artifact metadata is
+## eventually consistent. Recover with `gh workflow run "Publish demo" --ref
+## gh-pages`, NOT `gh run rerun --failed`: a rerun re-issues the OIDC token
+## against the original attempt and dies on `id-token: write` instead.
+name: Publish demo
+
+on:
+  push:
+    branches: [gh-pages]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+      - id: deployment
+        uses: actions/deploy-pages@v4
